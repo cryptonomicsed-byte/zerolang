@@ -1,0 +1,90 @@
+// GlyphIndex primitives — GIX-FOLD-v1 and GIX1 envelope validation in Zero.
+//
+// Part of the ecosystem-wide GlyphIndex sovereign-memory contract
+// (spec: OSOVM/GLYPHINDEX_SPEC.md; canonical reference implementation:
+// Vantage/backend/glyph_index.py). Zero holds the graph-native projection of
+// glyph memory, so this example implements the two pieces every projection
+// needs: folding a 32-byte content hash onto its display glyph, and
+// structurally validating a sealed GIX1 blob without holding any keys.
+//
+// The digests in main are frozen cross-language test vectors shared by every
+// repo in the ecosystem ("hello" and "GlyphIndex" under SHA-256).
+
+// GIX-FOLD-v1 folds a digest into the 63,422 valid printable BMP scalars:
+//   R1 = U+0020..U+D7FF (55,264)  R2 = U+E000..U+FDCF (7,632)
+//   R3 = U+FDF0..U+FFFD (526)
+fn glyph_fold_index(digest: Span<u8>) -> u64 {
+    var rem: u64 = 0
+    var i: usize = 0
+    while i < std.mem.len(digest) {
+        rem = (rem * 256_u64 + digest[i] as u64) % 63422_u64
+        i = i + 1
+    }
+    return rem
+}
+
+fn glyph_fold_codepoint(digest: Span<u8>) -> u64 {
+    var idx: u64 = glyph_fold_index(digest)
+    if idx < 55264_u64 {
+        return 32_u64 + idx
+    }
+    idx = idx - 55264_u64
+    if idx < 7632_u64 {
+        return 57344_u64 + idx
+    }
+    return 65008_u64 + idx - 7632_u64
+}
+
+// Digital Calabash linkage: digest[0] → base Odù, top two bytes → composed.
+fn odu_base(digest: Span<u8>) -> u64 {
+    return digest[0] as u64
+}
+
+fn odu_composed(digest: Span<u8>) -> u64 {
+    return digest[0] as u64 * 256_u64 + digest[1] as u64
+}
+
+// Structural audit of a sealed GIX1 blob (keyless — same checks as
+// Zangbeto's crypto-kernel auditor):
+//   "GIX1" | version(0x01) | flags(bit0=zlib only) | nonce(12) | ct||tag(16)
+fn gix1_valid(blob: Span<u8>) -> Bool {
+    if std.mem.len(blob) < 34 {
+        return false
+    }
+    if blob[0] != 71_u8 || blob[1] != 73_u8 || blob[2] != 88_u8 || blob[3] != 49_u8 {
+        return false
+    }
+    if blob[4] != 1_u8 {
+        return false
+    }
+    if blob[5] > 1_u8 {
+        return false
+    }
+    return true
+}
+
+pub fn main(world: World) -> Void raises {
+    // SHA-256("hello") — folds to code point 23636, Odù 44 / 11506.
+    let hello: [32]u8 = [44, 242, 77, 186, 95, 176, 163, 14, 38, 232, 59, 42, 197, 185, 226, 158, 27, 22, 30, 92, 31, 167, 66, 94, 115, 4, 51, 98, 147, 139, 152, 36]
+    // SHA-256("GlyphIndex") — folds to code point 13726, Odù 68 / 17595.
+    let glyphindex: [32]u8 = [68, 187, 99, 54, 228, 91, 47, 93, 175, 118, 73, 48, 172, 29, 31, 39, 152, 173, 146, 195, 64, 72, 240, 57, 86, 134, 172, 69, 9, 160, 167, 236]
+
+    var fold_ok: Bool = glyph_fold_codepoint(hello[..]) == 23636_u64
+    fold_ok = fold_ok && glyph_fold_codepoint(glyphindex[..]) == 13726_u64
+    var odu_ok: Bool = odu_base(hello[..]) == 44_u64
+    odu_ok = odu_ok && odu_composed(hello[..]) == 11506_u64
+    odu_ok = odu_ok && odu_base(glyphindex[..]) == 68_u64
+    odu_ok = odu_ok && odu_composed(glyphindex[..]) == 17595_u64
+
+    // Minimal well-formed envelope: magic, v1, no flags, 12B nonce, 16B tag.
+    var blob: [34]u8 = [71, 73, 88, 49, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    let envelope_ok: Bool = gix1_valid(blob[..])
+    blob[4] = 9_u8
+    let bad_version_rejected: Bool = !gix1_valid(blob[..])
+
+    if fold_ok && odu_ok && envelope_ok && bad_version_rejected {
+        check world.out.write("glyphindex vectors ok\n")
+    } else {
+        check world.out.write("glyphindex vectors FAILED\n")
+    }
+}
