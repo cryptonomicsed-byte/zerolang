@@ -76,7 +76,7 @@ Build JSON reports `profileSemantics` and `profileBudget`. Size JSON adds `sizeB
 | --- | --- | --- |
 | `std-math.graph` | pure fixed-width integer helpers and number-theory routines | `bin/zero check examples/std-math.graph` |
 | `codec-varint.graph` | `use std.codec`, varint length, CRC-32 | `bin/zero check examples/codec-varint.graph` |
-| `glyphindex.graph` | GlyphIndex GIX-FOLD-v1 fold + GIX1 envelope audit (frozen ecosystem vectors) | `bin/zero run examples/glyphindex.graph` |
+| `glyphindex.graph` | GlyphIndex GIX-FOLD-v1 fold, GIX1 envelope audit, and WALK graph verb (frozen ecosystem vectors + golden snapshot topology) | `bin/zero run examples/glyphindex.graph` |
 | `parse-cursor.graph` | `use std.parse`, scanner predicates | `bin/zero check examples/parse-cursor.graph` |
 | `std-path-io.graph` | `std.path` fixed-buffer path helpers and `std.io` caller-owned buffers | `bin/zero check examples/std-path-io.graph` |
 | `grep-scan.graph` | Line-oriented scanning with `std.io` and `std.str` | `bin/zero check examples/grep-scan.graph` |

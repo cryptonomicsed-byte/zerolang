@@ -1,14 +1,18 @@
-// GlyphIndex primitives — GIX-FOLD-v1 and GIX1 envelope validation in Zero.
+// GlyphIndex primitives — GIX-FOLD-v1, GIX1 envelope validation, and the
+// WALK graph verb in Zero.
 //
 // Part of the ecosystem-wide GlyphIndex sovereign-memory contract
 // (spec: OSOVM/GLYPHINDEX_SPEC.md; canonical reference implementation:
 // Vantage/backend/glyph_index.py). Zero holds the graph-native projection of
-// glyph memory, so this example implements the two pieces every projection
-// needs: folding a 32-byte content hash onto its display glyph, and
-// structurally validating a sealed GIX1 blob without holding any keys.
+// glyph memory, so this example implements the pieces every projection
+// needs: folding a 32-byte content hash onto its display glyph, structurally
+// validating a sealed GIX1 blob without holding any keys, and walking the
+// metadata graph with the shared `WALK <id> DEPTH <n>` semantics.
 //
 // The digests in main are frozen cross-language test vectors shared by every
-// repo in the ecosystem ("hello" and "GlyphIndex" under SHA-256).
+// repo in the ecosystem ("hello" and "GlyphIndex" under SHA-256), and the
+// walk topology mirrors the golden snapshot fixture committed to larql-glyph
+// (Rust) and oh-my-pi mnemopi (TypeScript).
 
 // GIX-FOLD-v1 folds a digest into the 63,422 valid printable BMP scalars:
 //   R1 = U+0020..U+D7FF (55,264)  R2 = U+E000..U+FDCF (7,632)
@@ -63,6 +67,51 @@ fn gix1_valid(blob: Span<u8>) -> Bool {
     return true
 }
 
+// `WALK <id> DEPTH <n>` — undirected BFS over glyph edges, start excluded,
+// same semantics as larql-glyph (Rust) and mnemopi glyph-index (TypeScript).
+// Indices 0..4 stand for the five frozen-vector chunks in the golden
+// snapshot fixture ("Àṣẹ", "hello", "GlyphIndex", "😊🚀 Unicode test",
+// "Ọ̀rúnmìlà"): a follows chain 0→1→2→3→4 plus a rem-cluster edge 0→4.
+// Returns how many nodes are reachable within the depth budget.
+fn walk_count(start: u8, depth: u64) -> u64 {
+    let edge_from: [5]u8 = [0, 1, 2, 3, 0]
+    let edge_to: [5]u8 = [1, 2, 3, 4, 4]
+    var seen: [5]u8 = [0, 0, 0, 0, 0]
+    var queue: [5]u8 = [0, 0, 0, 0, 0]
+    var queue_depth: [5]u64 = [0, 0, 0, 0, 0]
+    seen[start as usize] = 1_u8
+    queue[0] = start
+    var head: usize = 0
+    var tail: usize = 1
+    var reached: u64 = 0
+    while head < tail {
+        let id: u8 = queue[head]
+        let d: u64 = queue_depth[head]
+        head = head + 1
+        if d < depth {
+            var e: usize = 0
+            while e < 5 {
+                var next: u8 = 255_u8
+                if edge_from[e] == id {
+                    next = edge_to[e]
+                }
+                if edge_to[e] == id {
+                    next = edge_from[e]
+                }
+                if next != 255_u8 && seen[next as usize] == 0_u8 {
+                    seen[next as usize] = 1_u8
+                    queue[tail] = next
+                    queue_depth[tail] = d + 1_u64
+                    tail = tail + 1
+                    reached = reached + 1_u64
+                }
+                e = e + 1
+            }
+        }
+    }
+    return reached
+}
+
 pub fn main(world: World) -> Void raises {
     // SHA-256("hello") — folds to code point 23636, Odù 44 / 11506.
     let hello: [32]u8 = [44, 242, 77, 186, 95, 176, 163, 14, 38, 232, 59, 42, 197, 185, 226, 158, 27, 22, 30, 92, 31, 167, 66, 94, 115, 4, 51, 98, 147, 139, 152, 36]
@@ -82,7 +131,15 @@ pub fn main(world: World) -> Void raises {
     blob[4] = 9_u8
     let bad_version_rejected: Bool = !gix1_valid(blob[..])
 
-    if fold_ok && odu_ok && envelope_ok && bad_version_rejected {
+    // WALK parity with the golden snapshot fixture: from "Àṣẹ" depth 1
+    // reaches "hello" + "Ọ̀rúnmìlà"; depth 2 reaches the whole chain.
+    var walk_ok: Bool = walk_count(0_u8, 1_u64) == 2_u64
+    walk_ok = walk_ok && walk_count(0_u8, 2_u64) == 4_u64
+    walk_ok = walk_ok && walk_count(2_u8, 1_u64) == 2_u64
+    walk_ok = walk_ok && walk_count(2_u8, 4_u64) == 4_u64
+    walk_ok = walk_ok && walk_count(0_u8, 0_u64) == 0_u64
+
+    if fold_ok && odu_ok && envelope_ok && bad_version_rejected && walk_ok {
         check world.out.write("glyphindex vectors ok\n")
     } else {
         check world.out.write("glyphindex vectors FAILED\n")
