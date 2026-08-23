@@ -83,8 +83,8 @@ pub fn main(world: World) -> Void raises {
     let bad_version_rejected: Bool = !gix1_valid(blob[..])
 
     if fold_ok && odu_ok && envelope_ok && bad_version_rejected {
-        check world.out.write("glyphindex vectors ok\n")
+        check world.out.write("validation vectors ok\n")
     } else {
-        check world.out.write("glyphindex vectors FAILED\n")
+        check world.out.write("validation vectors FAILED\n")
     }
 }
